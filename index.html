@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Radar System</title>
+
+<style>
+body {
+  margin: 0;
+  background: rgb(246, 243, 243);
+  color: #00ff66;
+  font-family: monospace;
+}
+
+/* ---------- FRONT PAGE BACKGROUND ---------- */
+#page1 {
+  background:
+    linear-gradient(rgba(238, 233, 233, 0.75), rgba(248, 245, 245, 0.85)),
+    url("https://images.unsplash.com/photo-1581091012184-5c7c1a81b9f2");
+  background-size: cover;
+  background-position: center;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+h1 {
+  color: darkorange;
+  letter-spacing: 3px;
+  margin-bottom: 20px;
+}
+
+input, button, select {
+  padding: 10px 16px;
+  margin: 8px;
+  font-size: 16px;
+}
+
+button {
+  background: darkorange;
+  border: none;
+  cursor: pointer;
+}
+
+.hidden { display: none; }
+canvas { display:block; margin:auto; }
+
+.info {
+  background:#f8f4f4;
+  padding:12px;
+  margin:10px auto;
+  width:70%;
+  text-align:center;
+}
+
+.back {
+  position:absolute;
+  left:20px;
+  top:20px;
+}
+
+.menu {
+  position:absolute;
+  right:20px;
+  top:20px;
+  font-size:26px;
+  cursor:pointer;
+}
+
+.menu-items {
+  position:absolute;
+  right:20px;
+  top:50px;
+  background:#f5f1f1;
+  border:1px solid #00ff66;
+  display:none;
+}
+
+.menu-items div {
+  padding:8px 14px;
+  cursor:pointer;
+}
+
+.menu-items div:hover { background:#003300; }
+
+table {
+  width:80%;
+  margin:auto;
+  border-collapse:collapse;
+}
+
+th,td {
+  border:1px solid #00ff66;
+  padding:6px;
+}
+
+th { background:#fbfcfb; }
+.detect { color:red; }
+</style>
+</head>
+
+<body>
+
+<!-- PAGE 1 -->
+<div id="page1" class="center">
+  <h1>RADAR SYSTEM</h1>
+  <input id="name" placeholder="Enter Your Name">
+  <input id="title" placeholder="Enter System Title">
+  <button onclick="goPage(2)">NEXT</button>
+</div>
+
+<!-- PAGE 2 -->
+<div id="page2" class="center hidden">
+  <button class="back" onclick="goPage(1)">⬅ BACK</button>
+  <h1>CONNECTION SETUP</h1>
+  <select id="mode">
+    <option value="manual">Manual Stop</option>
+    <option value="fixed">Fixed Time (30 sec)</option>
+  </select>
+  <button onclick="connect()">SELECT PORT & START</button>
+</div>
+
+<!-- PAGE 3 -->
+<div id="page3" class="hidden">
+  <button class="back" onclick="goPage(2)">⬅ BACK</button>
+  <h1 id="projectTitle" style="text-align:center;"></h1>
+
+  <canvas id="radar" width="720" height="360"></canvas>
+
+  <div class="info">
+    ANGLE: <span id="angleSpan">0</span>° &nbsp;
+    DISTANCE: <span id="distanceSpan">--</span> cm
+  </div>
+
+  <button onclick="goPage(4)" style="display:block;margin:auto;">
+    VIEW DATA
+  </button>
+</div>
+
+<!-- PAGE 4 -->
+<div id="page4" class="hidden">
+  <button class="back" onclick="goPage(3)">⬅ BACK</button>
+
+  <div class="menu" onclick="toggleMenu()">⋮</div>
+  <div class="menu-items" id="menuItems">
+    <div onclick="exportCSV()">Export CSV</div>
+    <div onclick="exportPDF()">Convert to PDF</div>
+    <div onclick="showOverview()">Simplified Data</div>
+    <div onclick="shareData()">Share</div>
+  </div>
+
+  <h1 style="text-align:center;">DATA RECORDS</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Angle</th>
+        <th>Distance</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="dataTable"></tbody>
+  </table>
+
+  <button onclick="showOverview()" style="display:block;margin:20px auto;">
+    FINAL OVERVIEW
+  </button>
+</div>
+
+<!-- PAGE 5 -->
+<div id="page5" class="hidden">
+  <button class="back" onclick="goPage(4)">⬅ BACK</button>
+
+  <h1 style="text-align:center;">SIMPLIFIED OVERVIEW</h1>
+
+  <div class="info">
+    <p><b>Name:</b> <span id="ovName"></span></p>
+    <p><b>System:</b> <span id="ovTitle"></span></p>
+    <p><b>Total Detections:</b> <span id="ovCount"></span></p>
+    <p><b>Average Distance:</b> <span id="ovAvg"></span> cm</p>
+    <p><b>Minimum Distance:</b> <span id="ovMin"></span> cm</p>
+    <p><b>Maximum Distance:</b> <span id="ovMax"></span> cm</p>
+    <p><b>Test Duration:</b> <span id="ovTime"></span></p>
+  </div>
+</div>
+
+<script>
+function goPage(n){
+  for(let i=1;i<=5;i++)
+    document.getElementById("page"+i).classList.add("hidden");
+  document.getElementById("page"+n).classList.remove("hidden");
+}
+
+const canvas=document.getElementById("radar");
+const ctx=canvas.getContext("2d");
+const cx=canvas.width/2;
+const cy=canvas.height-10;
+const radius=canvas.height-40;
+const maxRange=200;
+
+let angle=0, distance=200;
+let trail=[];
+let distances=[];
+let startTime=Date.now();
+let running=true;
+
+/* RADAR DRAW */
+function drawRadar(){
+  ctx.fillStyle="rgba(0,0,0,0.25)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle="#00ff66";
+  ctx.font="14px monospace";
+  ctx.fillStyle="#00ff66";
+
+  for(let r=60;r<=radius;r+=60){
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,Math.PI,0);
+    ctx.stroke();
+  }
+
+  for(let a=0;a<=180;a+=30){
+    let rad=Math.PI-a*Math.PI/180;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+radius*Math.cos(rad),cy-radius*Math.sin(rad));
+    ctx.stroke();
+    ctx.fillText(a+"°",
+      cx+(radius-20)*Math.cos(rad)-10,
+      cy-(radius-20)*Math.sin(rad));
+  }
+
+  let sweep=Math.PI-angle*Math.PI/180;
+  ctx.strokeStyle="#00ff00";
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(cx,cy);
+  ctx.lineTo(cx+radius*Math.cos(sweep),cy-radius*Math.sin(sweep));
+  ctx.stroke();
+
+  for(let i=trail.length-1;i>=0;i--){
+    let t=trail[i];
+    ctx.strokeStyle=`rgba(255,0,0,${t.a})`;
+    ctx.lineWidth=5;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+t.d*Math.cos(t.r),cy-t.d*Math.sin(t.r));
+    ctx.stroke();
+    t.a-=0.02;
+    if(t.a<=0) trail.splice(i,1);
+  }
+
+  if(running) requestAnimationFrame(drawRadar);
+}
+
+/* SERIAL */
+async function connect(){
+  goPage(3);
+  projectTitle.textContent=title.value;
+  startTime=Date.now();
+
+  const port=await navigator.serial.requestPort();
+  await port.open({baudRate:9600});
+  const decoder=new TextDecoderStream();
+  port.readable.pipeTo(decoder.writable);
+  const reader=decoder.readable.getReader();
+
+  drawRadar();
+  let buffer="";
+
+  while(running){
+    const {value}=await reader.read();
+    buffer+=value;
+    let lines=buffer.split("\n");
+    buffer=lines.pop();
+
+    for(let l of lines){
+      let p=l.trim().split(",");
+      if(p.length!==2) continue;
+      angle=parseInt(p[0]);
+      distance=parseInt(p[1]);
+      angleSpan.textContent=angle;
+      distanceSpan.textContent=distance;
+
+      if(distance<maxRange){
+        trail.push({
+          r:Math.PI-angle*Math.PI/180,
+          d:(distance/maxRange)*radius,
+          a:1
+        });
+        saveData(angle,distance);
+      }
+    }
+  }
+}
+
+function saveData(a,d){
+  distances.push(d);
+  let row=document.createElement("tr");
+  row.className="detect";
+  row.innerHTML=
+    `<td>${name.value}</td>
+     <td>${a}</td>
+     <td>${d}</td>
+     <td>${new Date().toLocaleTimeString()}</td>`;
+  dataTable.appendChild(row);
+}
+
+/* OVERVIEW */
+function showOverview(){
+  goPage(5);
+  ovName.textContent=name.value;
+  ovTitle.textContent=title.value;
+  ovCount.textContent=distances.length;
+  ovMin.textContent=Math.min(...distances);
+  ovMax.textContent=Math.max(...distances);
+  ovAvg.textContent=Math.round(distances.reduce((a,b)=>a+b,0)/distances.length);
+  ovTime.textContent=Math.round((Date.now()-startTime)/1000)+" sec";
+}
+
+function toggleMenu(){
+  menuItems.style.display=
+    menuItems.style.display==="block"?"none":"block";
+}
+
+function exportCSV(){
+  let csv="Name,Angle,Distance,Time\n";
+  [...dataTable.rows].forEach(r=>{
+    csv+=[...r.cells].map(c=>c.innerText).join(",")+"\n";
+  });
+  download(csv,"radar_data.csv","text/csv");
+}
+
+function exportPDF(){ window.print(); }
+
+function shareData(){
+  navigator.share({
+    title:"Radar System",
+    text:"Radar detection results",
+    url:location.href
+  });
+}
+
+function download(data,name,type){
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([data],{type}));
+  a.download=name;
+  a.click();
+}
+</script>
+
+</body>
+</html>
